@@ -57,6 +57,21 @@ function safeFileTime() {
   return `${y}${m}${d}_${hh}${mm}${ss}`;
 }
 
+function scrollPageToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "auto"
+  });
+
+  const appNode = document.getElementById("app");
+  if (appNode) {
+    appNode.scrollTop = 0;
+  }
+
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
 function shuffleArray(arr) {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -431,6 +446,8 @@ function renderWelcome() {
     </div>
   `;
 
+  scrollPageToTop();
+
   document.getElementById("startExperimentBtn").addEventListener("click", () => {
     const input = document.getElementById("participantIdInput");
     const participantId = input.value.trim();
@@ -467,6 +484,8 @@ function renderResumePrompt(savedState) {
       <button id="restartBtn" class="secondary-btn">重新开始</button>
     </div>
   `;
+
+  scrollPageToTop();
 
   document.getElementById("resumeBtn").addEventListener("click", () => {
     experimentState.participantId = savedState.participantId;
@@ -507,6 +526,8 @@ function renderTrial() {
     </div>
   `;
 
+  scrollPageToTop();
+
   const form = document.getElementById("trialForm");
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -522,7 +543,11 @@ function renderTrial() {
       experimentState.data.completed = true;
       experimentState.data.endTime = new Date().toISOString();
       persistState();
-      renderFinish();
+
+      setTimeout(() => {
+        exportCSV();
+        renderFinish();
+      }, 100);
     }
   });
 }
@@ -632,12 +657,15 @@ function renderFinish() {
       <h2>实验结束</h2>
       <div class="note-box">
         你已完成本部分实验任务。<br>
+        CSV 数据已自动导出到浏览器下载位置。<br>
         请联系实验员进行下一步操作。
       </div>
 
       <button id="experimenterConfirmBtn" class="danger-btn">实验员确认完成</button>
     </div>
   `;
+
+  scrollPageToTop();
 
   document.getElementById("experimenterConfirmBtn").addEventListener("click", () => {
     renderDataExportPage();
@@ -653,14 +681,17 @@ function renderDataExportPage() {
         被试编号：${experimentState.participantId}<br>
         条件：${experimentState.condition}<br>
         顺序模板：${experimentState.data?.orderTemplate || ""}<br>
-        请先导出 CSV 与 JSON 备份文件，再进行后续问卷或结束操作。
+        CSV 已自动导出；如需备份，可额外导出 JSON。<br>
+        完成后请清除本地记录。
       </div>
 
-      <button id="exportCsvBtn">导出 CSV</button>
+      <button id="exportCsvBtn">再次导出 CSV</button>
       <button id="exportJsonBtn" class="secondary-btn">导出 JSON 备份</button>
       <button id="confirmEndBtn" class="danger-btn">导出完成并清除本地记录</button>
     </div>
   `;
+
+  scrollPageToTop();
 
   document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
   document.getElementById("exportJsonBtn").addEventListener("click", exportJSON);
