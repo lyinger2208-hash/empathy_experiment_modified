@@ -687,7 +687,6 @@ function renderFinish() {
       <h2>实验结束</h2>
       <div class="note-box">
         你已完成本部分实验任务。<br>
-        CSV 已自动导出到浏览器下载。<br>
         请联系实验员进行下一步操作。
       </div>
 
