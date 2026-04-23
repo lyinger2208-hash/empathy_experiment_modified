@@ -342,3 +342,97 @@ const neutralMaterials = [
     text: "“MBTI已经过时，SBTI来了。”\n近日，一种名为“SBTI人格测试”刷屏朋友圈，网站因访问量激增一度服务器崩溃。该测试包含约30道选择题，题目设置较为随意，部分选项带有趣味性，完成后会生成如“吗喽”“送钱者”“草者”等梗味十足的标签。\n测试作者表示，该项目最初源于劝朋友戒酒的想法，仅用于娱乐，不应被视为专业的人格评估工具，后续也会根据反馈进行完善和修改，并不会用于营利。正如测试解读页所言：“你可以笑，但别太当真”。"
   }
 ];
+/*************************
+ * FEED META AUGMENTATION
+ * 只追加元信息，不改动原有材料内容
+ *************************/
+
+const AVATAR_POOL = [
+  "avatar-neutral-1",
+  "avatar-neutral-2",
+  "avatar-neutral-3",
+  "avatar-neutral-4",
+  "avatar-neutral-5",
+  "avatar-neutral-6"
+];
+
+function seededHash(str) {
+  let hash = 0;
+  const input = String(str || "");
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function pickFromSeed(seed, arr) {
+  return arr[seed % arr.length];
+}
+
+function makeRandomSuffix(seed) {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  let value = seed || 1;
+
+  for (let i = 0; i < 6; i++) {
+    value = (value * 9301 + 49297) % 233280;
+    result += chars[value % chars.length];
+  }
+
+  return result;
+}
+
+function buildUserName(materialId) {
+  const seed = seededHash(materialId);
+
+  // 一部分固定为 momo，一部分为“用户+随机字母数字串”
+  if (seed % 3 === 0) {
+    return "momo";
+  }
+
+  return `用户${makeRandomSuffix(seed)}`;
+}
+
+function buildAvatarType(materialId) {
+  const seed = seededHash(`${materialId}_avatar`);
+  return pickFromSeed(seed, AVATAR_POOL);
+}
+
+function attachFeedMeta(item) {
+  return {
+    ...item,
+    userName: buildUserName(item.id),
+    avatarType: buildAvatarType(item.id),
+    showLike: true,
+    showComment: true,
+    showFavorite: true
+  };
+}
+
+function augmentNegativeMaterials(materialsObj) {
+  const result = {};
+
+  Object.keys(materialsObj).forEach((themeKey) => {
+    result[themeKey] = {
+      near: materialsObj[themeKey].near.map(attachFeedMeta),
+      far: materialsObj[themeKey].far.map(attachFeedMeta)
+    };
+  });
+
+  return result;
+}
+
+function augmentNeutralMaterials(materialsArr) {
+  return materialsArr.map(attachFeedMeta);
+}
+
+// 用增强后的版本覆盖原变量
+Object.keys(negativeMaterials).forEach((themeKey) => {
+  negativeMaterials[themeKey].near = negativeMaterials[themeKey].near.map(attachFeedMeta);
+  negativeMaterials[themeKey].far = negativeMaterials[themeKey].far.map(attachFeedMeta);
+});
+
+for (let i = 0; i < neutralMaterials.length; i++) {
+  neutralMaterials[i] = attachFeedMeta(neutralMaterials[i]);
+}

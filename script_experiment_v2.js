@@ -57,21 +57,6 @@ function safeFileTime() {
   return `${y}${m}${d}_${hh}${mm}${ss}`;
 }
 
-function scrollPageToTop() {
-  window.scrollTo({
-    top: 0,
-    behavior: "auto"
-  });
-
-  const appNode = document.getElementById("app");
-  if (appNode) {
-    appNode.scrollTop = 0;
-  }
-
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-}
-
 function shuffleArray(arr) {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -241,7 +226,8 @@ function initializeExperimentRecord(participantId, condition, timeline) {
     theme: trial.theme || "",
     materialId: trial.id || "",
     orderSlot: trial.orderSlot || "",
-    orderTemplate: trial.orderTemplate || ""
+    orderTemplate: trial.orderTemplate || "",
+    username: trial.username || ""
   }));
 
   return data;
@@ -368,10 +354,45 @@ function formatScale(name, scaleType, required = true) {
   `;
 }
 
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text ?? "";
+  return div.innerHTML;
+}
+
 function renderPostCard(trial) {
+  const username = trial.username || "匿名用户";
+
   return `
     <div class="post-card">
-      <div class="post-text">${trial.text}</div>
+      <div class="post-header">
+        <div class="avatar" aria-hidden="true">
+          <svg viewBox="0 0 24 24" class="avatar-icon" fill="none">
+            <circle cx="12" cy="8" r="4" fill="currentColor"></circle>
+            <path d="M4 20c0-3.6 3.6-6 8-6s8 2.4 8 6" fill="currentColor"></path>
+          </svg>
+        </div>
+        <div class="user-info">
+          <div class="username">${escapeHtml(username)}</div>
+        </div>
+      </div>
+
+      <div class="post-text">${escapeHtml(trial.text || "")}</div>
+
+      <div class="post-actions" aria-hidden="true">
+        <div class="post-action-item">
+          <span class="post-action-icon">♡</span>
+          <span class="post-action-label">点赞</span>
+        </div>
+        <div class="post-action-item">
+          <span class="post-action-icon">💬</span>
+          <span class="post-action-label">评论</span>
+        </div>
+        <div class="post-action-item">
+          <span class="post-action-icon">☆</span>
+          <span class="post-action-label">收藏</span>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -429,6 +450,14 @@ function renderNeutralQuestions() {
   `;
 }
 
+function scrollToTopAfterRender() {
+  window.scrollTo({ top: 0, behavior: "auto" });
+  const appElement = document.getElementById("app");
+  if (appElement) {
+    appElement.scrollTop = 0;
+  }
+}
+
 function renderWelcome() {
   app.innerHTML = `
     <div class="topbar">实验开始</div>
@@ -446,7 +475,7 @@ function renderWelcome() {
     </div>
   `;
 
-  scrollPageToTop();
+  scrollToTopAfterRender();
 
   document.getElementById("startExperimentBtn").addEventListener("click", () => {
     const input = document.getElementById("participantIdInput");
@@ -485,7 +514,7 @@ function renderResumePrompt(savedState) {
     </div>
   `;
 
-  scrollPageToTop();
+  scrollToTopAfterRender();
 
   document.getElementById("resumeBtn").addEventListener("click", () => {
     experimentState.participantId = savedState.participantId;
@@ -526,7 +555,7 @@ function renderTrial() {
     </div>
   `;
 
-  scrollPageToTop();
+  scrollToTopAfterRender();
 
   const form = document.getElementById("trialForm");
   form.addEventListener("submit", (e) => {
@@ -543,11 +572,8 @@ function renderTrial() {
       experimentState.data.completed = true;
       experimentState.data.endTime = new Date().toISOString();
       persistState();
-
-      setTimeout(() => {
-        exportCSV();
-        renderFinish();
-      }, 100);
+      exportCSV();
+      renderFinish();
     }
   });
 }
@@ -567,6 +593,7 @@ function saveTrialResponse(form, trial) {
     materialId: trial.id || "",
     orderSlot: trial.orderSlot || "",
     orderTemplate: trial.orderTemplate || "",
+    username: trial.username || "",
     text: trial.text,
     readingCheck: getFormValue(form, "readingCheck"),
     psychologicalDistance: trial.type === "negative" ? getFormValue(form, "psychologicalDistance") : "",
@@ -608,6 +635,7 @@ function buildWideCSVRow(data) {
     row[`trial${i}_theme`] = trial.theme || "";
     row[`trial${i}_materialId`] = trial.materialId || "";
     row[`trial${i}_orderSlot`] = trial.orderSlot || "";
+    row[`trial${i}_username`] = trial.username || "";
     row[`trial${i}_readingCheck`] = trial.readingCheck ?? "";
     row[`trial${i}_psychologicalDistance`] = trial.psychologicalDistance ?? "";
     row[`trial${i}_affectiveEmpathy`] = trial.affectiveEmpathy ?? "";
@@ -634,7 +662,9 @@ function downloadFile(filename, content, mimeType) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
@@ -657,7 +687,7 @@ function renderFinish() {
       <h2>实验结束</h2>
       <div class="note-box">
         你已完成本部分实验任务。<br>
-        CSV 数据已自动导出到浏览器下载位置。<br>
+        CSV 已自动导出到浏览器下载。<br>
         请联系实验员进行下一步操作。
       </div>
 
@@ -665,7 +695,7 @@ function renderFinish() {
     </div>
   `;
 
-  scrollPageToTop();
+  scrollToTopAfterRender();
 
   document.getElementById("experimenterConfirmBtn").addEventListener("click", () => {
     renderDataExportPage();
@@ -676,27 +706,26 @@ function renderDataExportPage() {
   app.innerHTML = `
     <div class="topbar">实验员页面</div>
     <div class="screen">
-      <h2>请导出实验数据</h2>
+      <h2>实验结束确认</h2>
       <div class="note-box">
         被试编号：${experimentState.participantId}<br>
         条件：${experimentState.condition}<br>
         顺序模板：${experimentState.data?.orderTemplate || ""}<br>
-        CSV 已自动导出；如需备份，可额外导出 JSON。<br>
-        完成后请清除本地记录。
+        如需额外备份，可再次导出 CSV 或 JSON。
       </div>
 
       <button id="exportCsvBtn">再次导出 CSV</button>
       <button id="exportJsonBtn" class="secondary-btn">导出 JSON 备份</button>
-      <button id="confirmEndBtn" class="danger-btn">导出完成并清除本地记录</button>
+      <button id="confirmEndBtn" class="danger-btn">清除本地记录并返回开始页</button>
     </div>
   `;
 
-  scrollPageToTop();
+  scrollToTopAfterRender();
 
   document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
   document.getElementById("exportJsonBtn").addEventListener("click", exportJSON);
   document.getElementById("confirmEndBtn").addEventListener("click", () => {
-    const ok = confirm("确认已经完成导出，并清除本地自动保存记录？");
+    const ok = confirm("确认清除本地自动保存记录，并返回开始页？");
     if (!ok) return;
     clearPersistedState();
     experimentState.participantId = "";

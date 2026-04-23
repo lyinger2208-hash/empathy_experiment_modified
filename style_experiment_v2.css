@@ -128,28 +128,34 @@ button:active {
 }
 
 .avatar {
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  background: #b9c9e8;
+  background: #e9eef5;
+  color: #7b8794;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.avatar-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 .user-info {
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 
 .username {
   font-size: 17px;
   font-weight: 600;
   color: #374151;
-}
-
-.post-time {
-  font-size: 14px;
-  color: #9ca3af;
-  margin-top: 2px;
+  line-height: 1.4;
 }
 
 .post-text {
@@ -158,6 +164,52 @@ button:active {
   white-space: pre-wrap;
   color: #1f2937;
   word-break: break-word;
+}
+
+/* 底部三项视觉展示栏 */
+.post-actions {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f5;
+}
+
+.post-action-btn {
+  background: transparent;
+  border: none;
+  width: auto;
+  margin: 0;
+  padding: 6px 10px;
+  color: #6b7280;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.post-action-btn:hover {
+  background: transparent;
+}
+
+.post-action-btn:active {
+  transform: none;
+}
+
+.post-action-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.post-action-label {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 500;
 }
 
 .question-panel {
@@ -309,17 +361,36 @@ select {
     height: 40px;
   }
 
-  .username {
-    font-size: 14px;
+  .avatar-icon {
+    width: 20px;
+    height: 20px;
   }
 
-  .post-time {
-    font-size: 12px;
+  .username {
+    font-size: 14px;
   }
 
   .post-text {
     font-size: 15px;
     line-height: 1.85;
+  }
+
+  .post-actions {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+
+  .post-action-btn {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+
+  .post-action-icon {
+    font-size: 14px;
+  }
+
+  .post-action-label {
+    font-size: 12px;
   }
 
   .question-block p {
