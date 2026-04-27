@@ -1123,7 +1123,7 @@ function renderDataExportPage() {
         被试编号：${experimentState.participantId}<br>
         条件：${experimentState.condition}<br>
         顺序模板：${experimentState.data?.orderTemplate || ""}<br>
-        程序已自动导出两种 CSV：按材料类型分列的宽格式用于与问卷平台按编号合并，逐试次长格式用于 LMM 或项目层面分析。<br>
+        程序已自动导出两种 CSV：按材料类型分列的宽格式，逐试次长格式。<br>
         如需额外备份，可再次导出 CSV 或 JSON。
       </div>
 
