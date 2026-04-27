@@ -1,7 +1,10 @@
+const PROGRAM_VERSION = "v11_slim_export_20260427";
+console.log("当前加载的实验程序版本：", PROGRAM_VERSION);
+
 const app = document.getElementById("app");
 
 const APP_CONFIG = {
-  storageKey: "empathy_experiment_autosave_v10",
+  storageKey: "empathy_experiment_autosave_v11",
   dataFilePrefix: "empathy_experiment_data",
   negativePerParticipant: 8,
   neutralPerParticipant: 8,
@@ -372,8 +375,7 @@ function initializeExperimentRecord(participantId, condition, timeline) {
     materialId: trial.id || "",
     pairId: trial.pairId || "",
     orderSlot: trial.orderSlot || "",
-    orderTemplate: trial.orderTemplate || "",
-    username: getTrialUsernameForData(trial)
+    orderTemplate: trial.orderTemplate || ""
   }));
 
   return data;
@@ -607,7 +609,7 @@ function scrollToTopAfterRender() {
 
 function renderWelcome() {
   app.innerHTML = `
-    <div class="topbar">实验开始</div>
+    <div class="topbar">实验开始｜v11 精简导出版</div>
     <div class="screen">
       <h2>欢迎参加本实验</h2>
       <div class="note-box">
@@ -751,8 +753,6 @@ function saveTrialResponse(form, trial) {
     pairId: trial.pairId || "",
     orderSlot: trial.orderSlot || "",
     orderTemplate: trial.orderTemplate || "",
-    username: getTrialUsernameForData(trial),
-    text: trial.text,
     readingCheck: getFormValue(form, "readingCheck"),
     psychologicalDistance: trial.type === "negative" ? getFormValue(form, "psychologicalDistance") : "",
     affectiveEmpathy: trial.type === "negative" ? getFormValue(form, "affectiveEmpathy") : "",
@@ -830,8 +830,6 @@ function getMergedTrialRecord(data, timelineIndex) {
     pairId: response?.pairId ?? meta?.pairId ?? "",
     orderSlot: response?.orderSlot ?? meta?.orderSlot ?? "",
     orderTemplate: response?.orderTemplate ?? meta?.orderTemplate ?? data.orderTemplate ?? "",
-    username: response?.username ?? meta?.username ?? "",
-    text: response?.text ?? "",
     readingCheck: response?.readingCheck ?? "",
     psychologicalDistance: response?.psychologicalDistance ?? "",
     affectiveEmpathy: response?.affectiveEmpathy ?? "",
@@ -883,7 +881,6 @@ function getTypeSeparatedWideHeaders() {
     "theme",
     "materialId",
     "pairId",
-    "username",
     "readingCheck",
     "psychologicalDistance",
     "affectiveEmpathy",
@@ -897,7 +894,6 @@ function getTypeSeparatedWideHeaders() {
     "timelineIndex",
     "trialNumber",
     "materialId",
-    "username",
     "readingCheck",
     "selfRelevance",
     "interestLevel",
@@ -933,7 +929,6 @@ function buildTypeSeparatedWideCSVRow(data) {
     row[`neg${i}_theme`] = trial.theme || "";
     row[`neg${i}_materialId`] = trial.materialId || "";
     row[`neg${i}_pairId`] = trial.pairId || "";
-    row[`neg${i}_username`] = trial.username || "";
     row[`neg${i}_readingCheck`] = trial.readingCheck ?? "";
     row[`neg${i}_psychologicalDistance`] = trial.psychologicalDistance ?? "";
     row[`neg${i}_affectiveEmpathy`] = trial.affectiveEmpathy ?? "";
@@ -948,7 +943,6 @@ function buildTypeSeparatedWideCSVRow(data) {
     row[`neu${i}_timelineIndex`] = trial.timelineIndex ?? "";
     row[`neu${i}_trialNumber`] = trial.trialNumber ?? "";
     row[`neu${i}_materialId`] = trial.materialId || "";
-    row[`neu${i}_username`] = trial.username || "";
     row[`neu${i}_readingCheck`] = trial.readingCheck ?? "";
     row[`neu${i}_selfRelevance`] = trial.selfRelevance ?? "";
     row[`neu${i}_interestLevel`] = trial.interestLevel ?? "";
@@ -995,8 +989,6 @@ function getLongHeaders() {
     "materialId",
     "pairId",
     "orderSlot",
-    "username",
-    "text",
     "readingCheck",
     "psychologicalDistance",
     "affectiveEmpathy",
@@ -1036,8 +1028,6 @@ function buildLongCSVRows(data) {
       materialId: trial.materialId || "",
       pairId: trial.pairId || "",
       orderSlot: trial.orderSlot || "",
-      username: trial.username || "",
-      text: trial.text || "",
       readingCheck: trial.readingCheck ?? "",
       psychologicalDistance: trial.psychologicalDistance ?? "",
       affectiveEmpathy: trial.affectiveEmpathy ?? "",
@@ -1123,7 +1113,7 @@ function renderDataExportPage() {
         被试编号：${experimentState.participantId}<br>
         条件：${experimentState.condition}<br>
         顺序模板：${experimentState.data?.orderTemplate || ""}<br>
-        程序已自动导出两种 CSV：按材料类型分列的宽格式，逐试次长格式。<br>
+        程序已自动导出两种 CSV：按材料类型分列的宽格式用于与问卷平台按编号合并，逐试次长格式用于 LMM 或项目层面分析。<br>
         如需额外备份，可再次导出 CSV 或 JSON。
       </div>
 
