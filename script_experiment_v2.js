@@ -1,7 +1,7 @@
 const app = document.getElementById("app");
 
 const APP_CONFIG = {
-  storageKey: "empathy_experiment_autosave_v6",
+  storageKey: "empathy_experiment_autosave_v10",
   dataFilePrefix: "empathy_experiment_data",
   negativePerParticipant: 8,
   neutralPerParticipant: 8,
@@ -41,6 +41,7 @@ const QUESTION_TEXT = {
 const experimentState = {
   participantId: "",
   condition: null,
+  assignment: null,
   timeline: [],
   currentIndex: 0,
   data: null
@@ -70,63 +71,186 @@ function sampleArray(arr, n) {
   return shuffleArray(arr).slice(0, n);
 }
 
-function chooseCondition() {
-  return Math.random() < 0.5 ? "repeated" : "diverse";
+function parseParticipantNumber(participantId) {
+  const match = String(participantId || "").match(/(\d+)$/);
+  if (!match) {
+    throw new Error("被试编号末尾需要包含数字，例如 E001、E002。这样程序才能按编号进行平衡分组。");
+  }
+
+  const participantNumber = Number(match[1]);
+  if (!Number.isInteger(participantNumber) || participantNumber < 1) {
+    throw new Error("被试编号中的数字必须是大于 0 的整数，例如 E001、E002。");
+  }
+
+  return participantNumber;
+}
+
+function buildBalancedAssignment(participantId) {
+  const participantNumber = parseParticipantNumber(participantId);
+  const allThemes = getThemeKeys();
+
+  if (allThemes.length === 0) {
+    throw new Error("未找到任何负性材料主题，请检查 materials 文件。");
+  }
+
+  const blockSize = allThemes.length * 2;
+  const zeroBasedIndex = participantNumber - 1;
+  const assignmentBlock = Math.floor(zeroBasedIndex / blockSize) + 1;
+  const blockPosition = zeroBasedIndex % blockSize;
+
+  // 每个主题占两个连续位置：第一个位置进入 repeated，第二个位置进入 diverse。
+  // 以 4 个主题为例，每 8 名被试构成一个完整平衡区组：
+  // 1 repeated-主题1；2 diverse；3 repeated-主题2；4 diverse；
+  // 5 repeated-主题3；6 diverse；7 repeated-主题4；8 diverse。
+  const themeIndex = Math.floor(blockPosition / 2) % allThemes.length;
+  const condition = blockPosition % 2 === 0 ? "repeated" : "diverse";
+
+  return {
+    mode: "balanced_by_participant_id",
+    participantNumber,
+    assignmentBlock,
+    blockPosition: blockPosition + 1,
+    blockSize,
+    condition,
+    repeatedTheme: condition === "repeated" ? allThemes[themeIndex] : "",
+    diversePairStartIndex: condition === "diverse" ? themeIndex : "",
+    orderTemplateIndex: zeroBasedIndex % ORDER_TEMPLATES.length
+  };
 }
 
 function getThemeKeys() {
   return Object.keys(negativeMaterials);
 }
 
+function getTrialUsername(trial) {
+  return trial.username || trial.userName || "匿名用户";
+}
+
+function getTrialUsernameForData(trial) {
+  return trial.username || trial.userName || "";
+}
+
+function getMaterialPairId(item, themeKey, pairIndex) {
+  if (item.pairId) return item.pairId;
+
+  const id = String(item.id || "");
+  if (id.includes("_near_")) return id.replace("_near_", "_pair_");
+  if (id.includes("_far_")) return id.replace("_far_", "_pair_");
+
+  return `${themeKey}_pair_${pairIndex + 1}`;
+}
+
+function buildPairedNegativeItems(themeKey, themePool, pairCount, fixedPairIndexes = null) {
+  if (!themePool || !Array.isArray(themePool.near) || !Array.isArray(themePool.far)) {
+    throw new Error(`主题 ${themeKey} 的近/远距离材料结构不完整。`);
+  }
+
+  if (themePool.near.length !== themePool.far.length) {
+    throw new Error(`主题 ${themeKey} 的近距离材料数量与远距离材料数量不一致，无法进行成对抽取。`);
+  }
+
+  if (pairCount > themePool.near.length) {
+    throw new Error(`主题 ${themeKey} 的可用故事对不足：需要 ${pairCount} 对，实际只有 ${themePool.near.length} 对。`);
+  }
+
+  const selectedPairIndexes = Array.isArray(fixedPairIndexes)
+    ? fixedPairIndexes.slice(0, pairCount)
+    : sampleArray(
+      Array.from({ length: themePool.near.length }, (_, index) => index),
+      pairCount
+    );
+
+  if (selectedPairIndexes.length !== pairCount) {
+    throw new Error(`主题 ${themeKey} 的固定故事对索引数量不足：需要 ${pairCount} 对，实际提供 ${selectedPairIndexes.length} 对。`);
+  }
+
+  selectedPairIndexes.forEach((pairIndex) => {
+    if (pairIndex < 0 || pairIndex >= themePool.near.length) {
+      throw new Error(`主题 ${themeKey} 的故事对索引超出范围：${pairIndex}。`);
+    }
+  });
+
+  const pairedItems = [];
+
+  selectedPairIndexes.forEach((pairIndex) => {
+    const nearItem = themePool.near[pairIndex];
+    const farItem = themePool.far[pairIndex];
+    const pairId = getMaterialPairId(nearItem, themeKey, pairIndex);
+
+    pairedItems.push({
+      ...nearItem,
+      type: "negative",
+      distance: "near",
+      theme: themeKey,
+      pairId
+    });
+
+    pairedItems.push({
+      ...farItem,
+      type: "negative",
+      distance: "far",
+      theme: themeKey,
+      pairId
+    });
+  });
+
+  return pairedItems;
+}
+
 function buildRepeatedNegativeTrials() {
+  if (APP_CONFIG.repeatedNearCount !== APP_CONFIG.repeatedFarCount) {
+    throw new Error("重复暴露组要求近距离与远距离材料数量相等，以保证成对抽取。");
+  }
+
   const allThemes = getThemeKeys();
-  const selectedTheme = sampleArray(allThemes, 1)[0];
+  const assignedTheme = experimentState.assignment?.repeatedTheme;
+  const selectedTheme = assignedTheme || sampleArray(allThemes, 1)[0];
   const themePool = negativeMaterials[selectedTheme];
 
-  const nearItems = sampleArray(themePool.near, APP_CONFIG.repeatedNearCount).map((item) => ({
-    ...item,
-    type: "negative",
-    distance: "near",
-    theme: selectedTheme
-  }));
+  const pairedItems = buildPairedNegativeItems(
+    selectedTheme,
+    themePool,
+    APP_CONFIG.repeatedNearCount
+  );
 
-  const farItems = sampleArray(themePool.far, APP_CONFIG.repeatedFarCount).map((item) => ({
-    ...item,
-    type: "negative",
-    distance: "far",
-    theme: selectedTheme
-  }));
-
-  return shuffleArray([...nearItems, ...farItems]).map((item, index) => ({
+  return shuffleArray(pairedItems).map((item, index) => ({
     ...item,
     trialNumber: index + 1
   }));
 }
 
 function buildDiverseNegativeTrials() {
+  if (APP_CONFIG.diverseNearPerTheme !== APP_CONFIG.diverseFarPerTheme) {
+    throw new Error("多样暴露组要求每个主题下近距离与远距离材料数量相等，以保证成对抽取。");
+  }
+
   const allThemes = getThemeKeys();
-  const selectedThemes = sampleArray(allThemes, APP_CONFIG.diverseThemeCount);
+  const selectedThemes = APP_CONFIG.diverseThemeCount === allThemes.length
+    ? allThemes
+    : sampleArray(allThemes, APP_CONFIG.diverseThemeCount);
 
   const pool = [];
+  const assignedPairStartIndex = experimentState.assignment?.diversePairStartIndex;
 
-  selectedThemes.forEach((themeKey) => {
+  selectedThemes.forEach((themeKey, themePosition) => {
     const themePool = negativeMaterials[themeKey];
 
-    const nearItems = sampleArray(themePool.near, APP_CONFIG.diverseNearPerTheme).map((item) => ({
-      ...item,
-      type: "negative",
-      distance: "near",
-      theme: themeKey
-    }));
+    let fixedPairIndexes = null;
+    if (assignedPairStartIndex !== "" && assignedPairStartIndex !== undefined && assignedPairStartIndex !== null) {
+      fixedPairIndexes = Array.from(
+        { length: APP_CONFIG.diverseNearPerTheme },
+        (_, offset) => (Number(assignedPairStartIndex) + themePosition + offset) % themePool.near.length
+      );
+    }
 
-    const farItems = sampleArray(themePool.far, APP_CONFIG.diverseFarPerTheme).map((item) => ({
-      ...item,
-      type: "negative",
-      distance: "far",
-      theme: themeKey
-    }));
+    const pairedItems = buildPairedNegativeItems(
+      themeKey,
+      themePool,
+      APP_CONFIG.diverseNearPerTheme,
+      fixedPairIndexes
+    );
 
-    pool.push(...nearItems, ...farItems);
+    pool.push(...pairedItems);
   });
 
   return shuffleArray(pool).map((item, index) => ({
@@ -141,6 +265,11 @@ function pickOrderTemplate() {
 
   if (validTemplates.length === 0) {
     throw new Error("没有可用的顺序模板，请检查 ORDER_TEMPLATES 的长度设置。");
+  }
+
+  const assignedOrderTemplateIndex = experimentState.assignment?.orderTemplateIndex;
+  if (assignedOrderTemplateIndex !== undefined && assignedOrderTemplateIndex !== null && assignedOrderTemplateIndex !== "") {
+    return validTemplates[Number(assignedOrderTemplateIndex) % validTemplates.length];
   }
 
   return sampleArray(validTemplates, 1)[0];
@@ -180,14 +309,23 @@ function buildNegativeTrials() {
 function buildTimeline() {
   const negativeTrials = buildNegativeTrials();
 
+  if (negativeTrials.length !== APP_CONFIG.negativePerParticipant) {
+    throw new Error(`负性材料数量不符合设置：需要 ${APP_CONFIG.negativePerParticipant} 条，实际生成 ${negativeTrials.length} 条。`);
+  }
+
   const neutralTrials = sampleArray(
     neutralMaterials,
     APP_CONFIG.neutralPerParticipant
   ).map((item, index) => ({
     ...item,
     type: "neutral",
-    trialNumber: index + 1
+    trialNumber: index + 1,
+    pairId: ""
   }));
+
+  if (neutralTrials.length !== APP_CONFIG.neutralPerParticipant) {
+    throw new Error(`中性材料数量不符合设置：需要 ${APP_CONFIG.neutralPerParticipant} 条，实际生成 ${neutralTrials.length} 条。`);
+  }
 
   const template = pickOrderTemplate();
 
@@ -210,6 +348,13 @@ function initializeExperimentRecord(participantId, condition, timeline) {
   const data = {
     participantId,
     condition,
+    assignmentMode: experimentState.assignment?.mode || "random",
+    participantNumber: experimentState.assignment?.participantNumber || "",
+    assignmentBlock: experimentState.assignment?.assignmentBlock || "",
+    blockPosition: experimentState.assignment?.blockPosition || "",
+    repeatedTheme: experimentState.assignment?.repeatedTheme || "",
+    diversePairStartIndex: experimentState.assignment?.diversePairStartIndex ?? "",
+    orderTemplateIndex: experimentState.assignment?.orderTemplateIndex ?? "",
     orderTemplate: timeline[0]?.orderTemplate || null,
     startTime: new Date().toISOString(),
     endTime: null,
@@ -225,9 +370,10 @@ function initializeExperimentRecord(participantId, condition, timeline) {
     distance: trial.distance || "",
     theme: trial.theme || "",
     materialId: trial.id || "",
+    pairId: trial.pairId || "",
     orderSlot: trial.orderSlot || "",
     orderTemplate: trial.orderTemplate || "",
-    username: trial.username || ""
+    username: getTrialUsernameForData(trial)
   }));
 
   return data;
@@ -237,6 +383,7 @@ function persistState() {
   const payload = {
     participantId: experimentState.participantId,
     condition: experimentState.condition,
+    assignment: experimentState.assignment,
     timeline: experimentState.timeline,
     currentIndex: experimentState.currentIndex,
     data: experimentState.data
@@ -361,7 +508,7 @@ function escapeHtml(text) {
 }
 
 function renderPostCard(trial) {
-  const username = trial.username || "匿名用户";
+  const username = getTrialUsername(trial);
 
   return `
     <div class="post-card">
@@ -486,8 +633,17 @@ function renderWelcome() {
       return;
     }
 
+    let assignment;
+    try {
+      assignment = buildBalancedAssignment(participantId);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+
     experimentState.participantId = participantId;
-    experimentState.condition = chooseCondition();
+    experimentState.assignment = assignment;
+    experimentState.condition = assignment.condition;
     buildTimeline();
     experimentState.data = initializeExperimentRecord(
       participantId,
@@ -519,6 +675,7 @@ function renderResumePrompt(savedState) {
   document.getElementById("resumeBtn").addEventListener("click", () => {
     experimentState.participantId = savedState.participantId;
     experimentState.condition = savedState.condition;
+    experimentState.assignment = savedState.assignment || null;
     experimentState.timeline = savedState.timeline;
     experimentState.currentIndex = savedState.currentIndex;
     experimentState.data = savedState.data;
@@ -572,7 +729,7 @@ function renderTrial() {
       experimentState.data.completed = true;
       experimentState.data.endTime = new Date().toISOString();
       persistState();
-      exportCSV();
+      exportAllCSV();
       renderFinish();
     }
   });
@@ -591,9 +748,10 @@ function saveTrialResponse(form, trial) {
     distance: trial.distance || "",
     theme: trial.theme || "",
     materialId: trial.id || "",
+    pairId: trial.pairId || "",
     orderSlot: trial.orderSlot || "",
     orderTemplate: trial.orderTemplate || "",
-    username: trial.username || "",
+    username: getTrialUsernameForData(trial),
     text: trial.text,
     readingCheck: getFormValue(form, "readingCheck"),
     psychologicalDistance: trial.type === "negative" ? getFormValue(form, "psychologicalDistance") : "",
@@ -606,7 +764,16 @@ function saveTrialResponse(form, trial) {
     timestamp: new Date().toISOString()
   };
 
-  experimentState.data.trials.push(baseRecord);
+  const existingIndex = experimentState.data.trials.findIndex(
+    (record) => Number(record.timelineIndex) === Number(trial.timelineIndex)
+  );
+
+  if (existingIndex >= 0) {
+    experimentState.data.trials[existingIndex] = baseRecord;
+  } else {
+    experimentState.data.trials.push(baseRecord);
+  }
+
   persistState();
 }
 
@@ -618,42 +785,277 @@ function sanitizeCSVValue(value) {
   return str;
 }
 
-function buildWideCSVRow(data) {
-  const row = {
+function buildParticipantBaseRow(data) {
+  const mergedTrials = getAllMergedTrialRecords(data);
+  return {
     participantId: data.participantId || "",
     condition: data.condition || "",
+    assignmentMode: data.assignmentMode || "",
+    participantNumber: data.participantNumber || "",
+    assignmentBlock: data.assignmentBlock || "",
+    blockPosition: data.blockPosition || "",
+    repeatedTheme: data.repeatedTheme || "",
+    diversePairStartIndex: data.diversePairStartIndex ?? "",
+    orderTemplateIndex: data.orderTemplateIndex ?? "",
     orderTemplate: data.orderTemplate || "",
     startTime: data.startTime || "",
     endTime: data.endTime || "",
-    completed: data.completed ? 1 : 0
+    completed: data.completed ? 1 : 0,
+    completedTrials: data.completedTrials ?? "",
+    timelineTypeSequence: mergedTrials.map((trial) => trial.type || "").join("|"),
+    timelineMaterialSequence: mergedTrials.map((trial) => trial.materialId || "").join("|"),
+    negativeMaterialSequence: mergedTrials.filter((trial) => trial.type === "negative").map((trial) => trial.materialId || "").join("|"),
+    neutralMaterialSequence: mergedTrials.filter((trial) => trial.type === "neutral").map((trial) => trial.materialId || "").join("|")
   };
+}
 
-  data.trials.forEach((trial) => {
-    const i = trial.timelineIndex;
-    row[`trial${i}_type`] = trial.type || "";
-    row[`trial${i}_distanceCondition`] = trial.distance || "";
-    row[`trial${i}_theme`] = trial.theme || "";
-    row[`trial${i}_materialId`] = trial.materialId || "";
-    row[`trial${i}_orderSlot`] = trial.orderSlot || "";
-    row[`trial${i}_username`] = trial.username || "";
-    row[`trial${i}_readingCheck`] = trial.readingCheck ?? "";
-    row[`trial${i}_psychologicalDistance`] = trial.psychologicalDistance ?? "";
-    row[`trial${i}_affectiveEmpathy`] = trial.affectiveEmpathy ?? "";
-    row[`trial${i}_cognitiveEmpathy`] = trial.cognitiveEmpathy ?? "";
-    row[`trial${i}_helpWillingness`] = trial.helpWillingness ?? "";
-    row[`trial${i}_selfRelevance`] = trial.selfRelevance ?? "";
-    row[`trial${i}_interestLevel`] = trial.interestLevel ?? "";
-    row[`trial${i}_continueWillingness`] = trial.continueWillingness ?? "";
-  });
+function getTrialByTimelineIndex(data, timelineIndex) {
+  return (data.trials || []).find((trial) => Number(trial.timelineIndex) === Number(timelineIndex)) || null;
+}
+
+function getTrialMetaByTimelineIndex(data, timelineIndex) {
+  return (data.timelineMeta || []).find((trial) => Number(trial.timelineIndex) === Number(timelineIndex)) || null;
+}
+
+function getMergedTrialRecord(data, timelineIndex) {
+  const response = getTrialByTimelineIndex(data, timelineIndex);
+  const meta = getTrialMetaByTimelineIndex(data, timelineIndex);
+  return {
+    timelineIndex,
+    trialNumber: response?.trialNumber ?? "",
+    type: response?.type ?? meta?.type ?? "",
+    distance: response?.distance ?? meta?.distance ?? "",
+    theme: response?.theme ?? meta?.theme ?? "",
+    materialId: response?.materialId ?? meta?.materialId ?? "",
+    pairId: response?.pairId ?? meta?.pairId ?? "",
+    orderSlot: response?.orderSlot ?? meta?.orderSlot ?? "",
+    orderTemplate: response?.orderTemplate ?? meta?.orderTemplate ?? data.orderTemplate ?? "",
+    username: response?.username ?? meta?.username ?? "",
+    text: response?.text ?? "",
+    readingCheck: response?.readingCheck ?? "",
+    psychologicalDistance: response?.psychologicalDistance ?? "",
+    affectiveEmpathy: response?.affectiveEmpathy ?? "",
+    cognitiveEmpathy: response?.cognitiveEmpathy ?? "",
+    helpWillingness: response?.helpWillingness ?? "",
+    selfRelevance: response?.selfRelevance ?? "",
+    interestLevel: response?.interestLevel ?? "",
+    continueWillingness: response?.continueWillingness ?? "",
+    timestamp: response?.timestamp ?? ""
+  };
+}
+
+function getAllMergedTrialRecords(data) {
+  const totalTrials = APP_CONFIG.negativePerParticipant + APP_CONFIG.neutralPerParticipant;
+  const trials = [];
+  for (let i = 1; i <= totalTrials; i++) {
+    trials.push(getMergedTrialRecord(data, i));
+  }
+  return trials;
+}
+
+function getTypeSeparatedWideHeaders() {
+  const baseHeaders = [
+    "participantId",
+    "condition",
+    "assignmentMode",
+    "participantNumber",
+    "assignmentBlock",
+    "blockPosition",
+    "repeatedTheme",
+    "diversePairStartIndex",
+    "orderTemplateIndex",
+    "orderTemplate",
+    "startTime",
+    "endTime",
+    "completed",
+    "completedTrials",
+    "timelineTypeSequence",
+    "timelineMaterialSequence",
+    "negativeMaterialSequence",
+    "neutralMaterialSequence"
+  ];
+
+  const negativeFields = [
+    "withinTypeOrder",
+    "timelineIndex",
+    "trialNumber",
+    "distanceCondition",
+    "theme",
+    "materialId",
+    "pairId",
+    "username",
+    "readingCheck",
+    "psychologicalDistance",
+    "affectiveEmpathy",
+    "cognitiveEmpathy",
+    "helpWillingness",
+    "timestamp"
+  ];
+
+  const neutralFields = [
+    "withinTypeOrder",
+    "timelineIndex",
+    "trialNumber",
+    "materialId",
+    "username",
+    "readingCheck",
+    "selfRelevance",
+    "interestLevel",
+    "continueWillingness",
+    "timestamp"
+  ];
+
+  const negativeHeaders = [];
+  for (let i = 1; i <= APP_CONFIG.negativePerParticipant; i++) {
+    negativeFields.forEach((field) => negativeHeaders.push(`neg${i}_${field}`));
+  }
+
+  const neutralHeaders = [];
+  for (let i = 1; i <= APP_CONFIG.neutralPerParticipant; i++) {
+    neutralFields.forEach((field) => neutralHeaders.push(`neu${i}_${field}`));
+  }
+
+  return [...baseHeaders, ...negativeHeaders, ...neutralHeaders];
+}
+
+function buildTypeSeparatedWideCSVRow(data) {
+  const row = buildParticipantBaseRow(data);
+  const mergedTrials = getAllMergedTrialRecords(data);
+  const negativeTrials = mergedTrials.filter((trial) => trial.type === "negative");
+  const neutralTrials = mergedTrials.filter((trial) => trial.type === "neutral");
+
+  for (let i = 1; i <= APP_CONFIG.negativePerParticipant; i++) {
+    const trial = negativeTrials[i - 1] || {};
+    row[`neg${i}_withinTypeOrder`] = trial.type ? i : "";
+    row[`neg${i}_timelineIndex`] = trial.timelineIndex ?? "";
+    row[`neg${i}_trialNumber`] = trial.trialNumber ?? "";
+    row[`neg${i}_distanceCondition`] = trial.distance || "";
+    row[`neg${i}_theme`] = trial.theme || "";
+    row[`neg${i}_materialId`] = trial.materialId || "";
+    row[`neg${i}_pairId`] = trial.pairId || "";
+    row[`neg${i}_username`] = trial.username || "";
+    row[`neg${i}_readingCheck`] = trial.readingCheck ?? "";
+    row[`neg${i}_psychologicalDistance`] = trial.psychologicalDistance ?? "";
+    row[`neg${i}_affectiveEmpathy`] = trial.affectiveEmpathy ?? "";
+    row[`neg${i}_cognitiveEmpathy`] = trial.cognitiveEmpathy ?? "";
+    row[`neg${i}_helpWillingness`] = trial.helpWillingness ?? "";
+    row[`neg${i}_timestamp`] = trial.timestamp || "";
+  }
+
+  for (let i = 1; i <= APP_CONFIG.neutralPerParticipant; i++) {
+    const trial = neutralTrials[i - 1] || {};
+    row[`neu${i}_withinTypeOrder`] = trial.type ? i : "";
+    row[`neu${i}_timelineIndex`] = trial.timelineIndex ?? "";
+    row[`neu${i}_trialNumber`] = trial.trialNumber ?? "";
+    row[`neu${i}_materialId`] = trial.materialId || "";
+    row[`neu${i}_username`] = trial.username || "";
+    row[`neu${i}_readingCheck`] = trial.readingCheck ?? "";
+    row[`neu${i}_selfRelevance`] = trial.selfRelevance ?? "";
+    row[`neu${i}_interestLevel`] = trial.interestLevel ?? "";
+    row[`neu${i}_continueWillingness`] = trial.continueWillingness ?? "";
+    row[`neu${i}_timestamp`] = trial.timestamp || "";
+  }
 
   return row;
 }
 
-function convertToCSV(data) {
-  const row = buildWideCSVRow(data);
-  const headers = Object.keys(row);
-  const values = headers.map((key) => sanitizeCSVValue(row[key]));
+function convertTypeSeparatedWideToCSV(data) {
+  const row = buildTypeSeparatedWideCSVRow(data);
+  const headers = getTypeSeparatedWideHeaders();
+  const values = headers.map((key) => sanitizeCSVValue(row[key] ?? ""));
   return "\uFEFF" + headers.join(",") + "\n" + values.join(",");
+}
+
+function getLongHeaders() {
+  return [
+    "participantId",
+    "condition",
+    "assignmentMode",
+    "participantNumber",
+    "assignmentBlock",
+    "blockPosition",
+    "repeatedTheme",
+    "diversePairStartIndex",
+    "orderTemplateIndex",
+    "orderTemplate",
+    "startTime",
+    "endTime",
+    "completed",
+    "completedTrials",
+    "timelineTypeSequence",
+    "timelineMaterialSequence",
+    "negativeMaterialSequence",
+    "neutralMaterialSequence",
+    "timelineIndex",
+    "withinTypeOrder",
+    "trialNumber",
+    "type",
+    "distanceCondition",
+    "theme",
+    "materialId",
+    "pairId",
+    "orderSlot",
+    "username",
+    "text",
+    "readingCheck",
+    "psychologicalDistance",
+    "affectiveEmpathy",
+    "cognitiveEmpathy",
+    "helpWillingness",
+    "selfRelevance",
+    "interestLevel",
+    "continueWillingness",
+    "timestamp"
+  ];
+}
+
+function buildLongCSVRows(data) {
+  const base = buildParticipantBaseRow(data);
+  const mergedTrials = getAllMergedTrialRecords(data);
+  let negativeOrder = 0;
+  let neutralOrder = 0;
+
+  return mergedTrials.map((trial) => {
+    let withinTypeOrder = "";
+    if (trial.type === "negative") {
+      negativeOrder += 1;
+      withinTypeOrder = negativeOrder;
+    } else if (trial.type === "neutral") {
+      neutralOrder += 1;
+      withinTypeOrder = neutralOrder;
+    }
+
+    return {
+      ...base,
+      timelineIndex: trial.timelineIndex,
+      withinTypeOrder,
+      trialNumber: trial.trialNumber,
+      type: trial.type || "",
+      distanceCondition: trial.distance || "",
+      theme: trial.theme || "",
+      materialId: trial.materialId || "",
+      pairId: trial.pairId || "",
+      orderSlot: trial.orderSlot || "",
+      username: trial.username || "",
+      text: trial.text || "",
+      readingCheck: trial.readingCheck ?? "",
+      psychologicalDistance: trial.psychologicalDistance ?? "",
+      affectiveEmpathy: trial.affectiveEmpathy ?? "",
+      cognitiveEmpathy: trial.cognitiveEmpathy ?? "",
+      helpWillingness: trial.helpWillingness ?? "",
+      selfRelevance: trial.selfRelevance ?? "",
+      interestLevel: trial.interestLevel ?? "",
+      continueWillingness: trial.continueWillingness ?? "",
+      timestamp: trial.timestamp || ""
+    };
+  });
+}
+
+function convertLongToCSV(data) {
+  const headers = getLongHeaders();
+  const rows = buildLongCSVRows(data);
+  const lines = rows.map((row) => headers.map((key) => sanitizeCSVValue(row[key] ?? "")).join(","));
+  return "\uFEFF" + headers.join(",") + "\n" + lines.join("\n");
 }
 
 function downloadFile(filename, content, mimeType) {
@@ -668,10 +1070,21 @@ function downloadFile(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-function exportCSV() {
-  const filename = `${APP_CONFIG.dataFilePrefix}_${experimentState.participantId}_${safeFileTime()}.csv`;
-  const csv = convertToCSV(experimentState.data);
+function exportTypeSeparatedWideCSV() {
+  const filename = `${APP_CONFIG.dataFilePrefix}_wide_by_type_${experimentState.participantId}_${safeFileTime()}.csv`;
+  const csv = convertTypeSeparatedWideToCSV(experimentState.data);
   downloadFile(filename, csv, "text/csv;charset=utf-8;");
+}
+
+function exportLongCSV() {
+  const filename = `${APP_CONFIG.dataFilePrefix}_long_by_trial_${experimentState.participantId}_${safeFileTime()}.csv`;
+  const csv = convertLongToCSV(experimentState.data);
+  downloadFile(filename, csv, "text/csv;charset=utf-8;");
+}
+
+function exportAllCSV() {
+  exportTypeSeparatedWideCSV();
+  exportLongCSV();
 }
 
 function exportJSON() {
@@ -710,10 +1123,13 @@ function renderDataExportPage() {
         被试编号：${experimentState.participantId}<br>
         条件：${experimentState.condition}<br>
         顺序模板：${experimentState.data?.orderTemplate || ""}<br>
+        程序已自动导出两种 CSV：按材料类型分列的宽格式用于与问卷平台按编号合并，逐试次长格式用于 LMM 或项目层面分析。<br>
         如需额外备份，可再次导出 CSV 或 JSON。
       </div>
 
-      <button id="exportCsvBtn">再次导出 CSV</button>
+      <button id="exportWideByTypeCsvBtn">再次导出按材料类型分列的宽格式 CSV</button>
+      <button id="exportLongCsvBtn" class="secondary-btn">再次导出逐试次长格式 CSV</button>
+      <button id="exportAllCsvBtn" class="secondary-btn">同时导出两种 CSV</button>
       <button id="exportJsonBtn" class="secondary-btn">导出 JSON 备份</button>
       <button id="confirmEndBtn" class="danger-btn">清除本地记录并返回开始页</button>
     </div>
@@ -721,7 +1137,9 @@ function renderDataExportPage() {
 
   scrollToTopAfterRender();
 
-  document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
+  document.getElementById("exportWideByTypeCsvBtn").addEventListener("click", exportTypeSeparatedWideCSV);
+  document.getElementById("exportLongCsvBtn").addEventListener("click", exportLongCSV);
+  document.getElementById("exportAllCsvBtn").addEventListener("click", exportAllCSV);
   document.getElementById("exportJsonBtn").addEventListener("click", exportJSON);
   document.getElementById("confirmEndBtn").addEventListener("click", () => {
     const ok = confirm("确认清除本地自动保存记录，并返回开始页？");
@@ -729,6 +1147,7 @@ function renderDataExportPage() {
     clearPersistedState();
     experimentState.participantId = "";
     experimentState.condition = null;
+    experimentState.assignment = null;
     experimentState.timeline = [];
     experimentState.currentIndex = 0;
     experimentState.data = null;
@@ -736,10 +1155,26 @@ function renderDataExportPage() {
   });
 }
 
+function restoreSavedState(savedState) {
+  experimentState.participantId = savedState.participantId || "";
+  experimentState.condition = savedState.condition || null;
+  experimentState.assignment = savedState.assignment || null;
+  experimentState.timeline = savedState.timeline || [];
+  experimentState.currentIndex = savedState.currentIndex || 0;
+  experimentState.data = savedState.data || null;
+}
+
 function boot() {
   const savedState = loadPersistedState();
+
   if (savedState && savedState.timeline?.length) {
-    renderResumePrompt(savedState);
+    restoreSavedState(savedState);
+
+    if (savedState.data?.completed) {
+      renderDataExportPage();
+    } else {
+      renderResumePrompt(savedState);
+    }
   } else {
     renderWelcome();
   }

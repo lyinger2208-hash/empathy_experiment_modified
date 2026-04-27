@@ -399,10 +399,21 @@ function buildAvatarType(materialId) {
   return pickFromSeed(seed, AVATAR_POOL);
 }
 
+function buildPairId(materialId) {
+  const id = String(materialId || "");
+  if (id.includes("_near_")) return id.replace("_near_", "_pair_");
+  if (id.includes("_far_")) return id.replace("_far_", "_pair_");
+  return "";
+}
+
 function attachFeedMeta(item) {
+  const username = buildUserName(item.id);
+
   return {
     ...item,
-    userName: buildUserName(item.id),
+    username,
+    userName: username,
+    pairId: buildPairId(item.id),
     avatarType: buildAvatarType(item.id),
     showLike: true,
     showComment: true,

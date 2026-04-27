@@ -176,7 +176,8 @@ button:active {
   border-top: 1px solid #edf1f5;
 }
 
-.post-action-btn {
+.post-action-btn,
+.post-action-item {
   background: transparent;
   border: none;
   width: auto;
@@ -193,11 +194,13 @@ button:active {
   box-shadow: none;
 }
 
-.post-action-btn:hover {
+.post-action-btn:hover,
+.post-action-item:hover {
   background: transparent;
 }
 
-.post-action-btn:active {
+.post-action-btn:active,
+.post-action-item:active {
   transform: none;
 }
 
@@ -380,7 +383,8 @@ select {
     padding-top: 10px;
   }
 
-  .post-action-btn {
+  .post-action-btn,
+  .post-action-item {
     padding: 4px 6px;
     gap: 4px;
   }
