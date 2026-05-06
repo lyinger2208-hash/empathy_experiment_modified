@@ -77,12 +77,12 @@ function sampleArray(arr, n) {
 function parseParticipantNumber(participantId) {
   const match = String(participantId || "").match(/(\d+)$/);
   if (!match) {
-    throw new Error("被试编号末尾需要包含数字，例如 E001、E002。这样程序才能按编号进行平衡分组。");
+    throw new Error("被试编号末尾需要包含数字，例如 001、002。这样程序才能按编号进行平衡分组。");
   }
 
   const participantNumber = Number(match[1]);
   if (!Number.isInteger(participantNumber) || participantNumber < 1) {
-    throw new Error("被试编号中的数字必须是大于 0 的整数，例如 E001、E002。");
+    throw new Error("被试编号中的数字必须是大于 0 的整数，例如 001、002。");
   }
 
   return participantNumber;
