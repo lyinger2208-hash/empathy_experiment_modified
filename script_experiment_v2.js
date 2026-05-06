@@ -609,7 +609,7 @@ function scrollToTopAfterRender() {
 
 function renderWelcome() {
   app.innerHTML = `
-    <div class="topbar">实验开始｜v11 精简导出版</div>
+    <div class="topbar">实验开始</div>
     <div class="screen">
       <h2>欢迎参加本实验</h2>
       <div class="note-box">
@@ -618,7 +618,7 @@ function renderWelcome() {
       </div>
 
       <label for="participantIdInput">被试编号</label>
-      <input id="participantIdInput" type="text" value="" placeholder="例如：E001" />
+      <input id="participantIdInput" type="text" value="" placeholder="例如：001" />
 
       <button id="startExperimentBtn">开始实验</button>
     </div>
