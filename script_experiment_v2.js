@@ -611,7 +611,7 @@ function renderWelcome() {
   app.innerHTML = `
     <div class="topbar">实验开始</div>
     <div class="screen">
-      <h2>欢迎参加本实验</h2>
+      <h2>欢迎参加本实验（请使用手机或电脑浏览器打开本链接）</h2>
       <div class="note-box">
         请根据实验员提供的编号填写被试编号。<br>
         该编号将用于后续数据整理与匹配。
