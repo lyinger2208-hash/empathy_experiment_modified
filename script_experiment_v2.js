@@ -1090,10 +1090,11 @@ function renderFinish() {
       <h2>实验结束</h2>
       <div class="note-box">
         你已完成本部分实验任务。<br>
-        请联系实验员进行下一步操作。
+        程序已自动导出两种 CSV：按材料类型（by type）分列、逐试次（by trial）。<br>
+        请确认是否导出了两份数据，若没有请点击下一步进行下载。
       </div>
 
-      <button id="experimenterConfirmBtn" class="danger-btn">实验员确认完成</button>
+      <button id="experimenterConfirmBtn" class="danger-btn">下一步</button>
     </div>
   `;
 
@@ -1106,22 +1107,18 @@ function renderFinish() {
 
 function renderDataExportPage() {
   app.innerHTML = `
-    <div class="topbar">实验员页面</div>
+    <div class="topbar">数据下载页面</div>
     <div class="screen">
       <h2>实验结束确认</h2>
       <div class="note-box">
         被试编号：${experimentState.participantId}<br>
-        条件：${experimentState.condition}<br>
-        顺序模板：${experimentState.data?.orderTemplate || ""}<br>
-        程序已自动导出两种 CSV：按材料类型分列的宽格式、逐试次长格式。<br>
-        如需额外备份，可再次导出 CSV 或 JSON。
+        请将两份数据导出并发给实验员；<br>
+        数据导出成功后请填写后测问卷。
       </div>
 
-      <button id="exportWideByTypeCsvBtn">再次导出按材料类型分列的宽格式 CSV</button>
-      <button id="exportLongCsvBtn" class="secondary-btn">再次导出逐试次长格式 CSV</button>
-      <button id="exportAllCsvBtn" class="secondary-btn">同时导出两种 CSV</button>
-      <button id="exportJsonBtn" class="secondary-btn">导出 JSON 备份</button>
-      <button id="confirmEndBtn" class="danger-btn">清除本地记录并返回开始页</button>
+      <button id="exportWideByTypeCsvBtn">导出按材料类型分列（by type）的数据</button>
+      <button id="exportLongCsvBtn" class="secondary-btn">导出逐试次（by trial）格式的数据</button>
+      <button id="confirmEndBtn" class="danger-btn">确认下载完成后可清除本地记录并返回开始页</button>
     </div>
   `;
 
@@ -1129,8 +1126,6 @@ function renderDataExportPage() {
 
   document.getElementById("exportWideByTypeCsvBtn").addEventListener("click", exportTypeSeparatedWideCSV);
   document.getElementById("exportLongCsvBtn").addEventListener("click", exportLongCSV);
-  document.getElementById("exportAllCsvBtn").addEventListener("click", exportAllCSV);
-  document.getElementById("exportJsonBtn").addEventListener("click", exportJSON);
   document.getElementById("confirmEndBtn").addEventListener("click", () => {
     const ok = confirm("确认清除本地自动保存记录，并返回开始页？");
     if (!ok) return;
